@@ -11,6 +11,9 @@ export default function BlobCanvas() {
     if (!cv) return
     const ctx = cv.getContext('2d', { alpha: true, desynchronized: true })
     if (!ctx) return
+    // Capture non-nullable references for use in nested functions
+    const canvas: HTMLCanvasElement = cv
+    const context: CanvasRenderingContext2D = ctx
 
     const S = 0.5
     let W = 0, H = 0
@@ -24,10 +27,10 @@ export default function BlobCanvas() {
     ]
 
     function resize() {
-      W = cv.width  = Math.round(window.innerWidth  * S)
-      H = cv.height = Math.round(window.innerHeight * S)
-      cv.style.width  = '100vw'
-      cv.style.height = '100vh'
+      W = canvas.width  = Math.round(window.innerWidth  * S)
+      H = canvas.height = Math.round(window.innerHeight * S)
+      canvas.style.width  = '100vw'
+      canvas.style.height = '100vh'
     }
 
     resize()
@@ -42,18 +45,18 @@ export default function BlobCanvas() {
       rafId = requestAnimationFrame(draw)
       if (ts - last < 32) return
       last = ts
-      ctx.clearRect(0, 0, W, H)
+      context.clearRect(0, 0, W, H)
       for (const b of B) {
         const x = (b[0] * W / S + Math.sin(ts * b[7] + b[11]) * b[9]) * S
         const y = (b[1] * H / S + Math.cos(ts * b[8] + b[11] * 1.3) * b[10]) * S
         const r = b[2] * (1 + 0.065 * Math.sin(ts * 0.00044 + b[11])) * S
-        const g = ctx.createRadialGradient(x, y, 0, x, y, r)
+        const g = context.createRadialGradient(x, y, 0, x, y, r)
         g.addColorStop(0, `rgba(${b[3]},${b[4]},${b[5]},${b[6]})`)
         g.addColorStop(1, 'rgba(0,0,0,0)')
-        ctx.beginPath()
-        ctx.ellipse(x, y, r, r * 0.8, ts * 0.00001 + b[11] * 0.3, 0, Math.PI * 2)
-        ctx.fillStyle = g
-        ctx.fill()
+        context.beginPath()
+        context.ellipse(x, y, r, r * 0.8, ts * 0.00001 + b[11] * 0.3, 0, Math.PI * 2)
+        context.fillStyle = g
+        context.fill()
       }
     }
 
