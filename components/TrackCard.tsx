@@ -2,6 +2,7 @@
 'use client'
 
 import { useState } from 'react'
+import { upload } from '@vercel/blob/client'
 import type { TrackRow } from '@/lib/types'
 
 interface Props {
@@ -32,17 +33,19 @@ export default function TrackCard({
     if (!file) return
     setUploading(u => ({ ...u, [field]: true }))
 
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await fetch('/api/upload', { method: 'POST', body: fd })
-    if (res.ok) {
-      const { url } = await res.json()
+    try {
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+      })
       await fetch(`/api/tracks/${track.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: url }),
+        body: JSON.stringify({ [field]: blob.url }),
       })
-      onFileUploaded(track.id, field, url)
+      onFileUploaded(track.id, field, blob.url)
+    } catch (err) {
+      console.error('Upload failed', err)
     }
     setUploading(u => ({ ...u, [field]: false }))
     e.target.value = ''
