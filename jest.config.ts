@@ -9,7 +9,7 @@ const config: Config = {
   transform: {
     '^.+\\.tsx?$': ['ts-jest', { tsconfig: { module: 'commonjs' } }],
   },
-  testPathPattern: '__tests__',
+  testMatch: ['**/__tests__/**/*.ts?(x)'],
 }
 
 export default config
