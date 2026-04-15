@@ -2,7 +2,16 @@
 'use client'
 
 import { useRef, useState, useEffect, useCallback } from 'react'
+import Script from 'next/script'
 import type { AlbumRow, TrackRow } from '@/lib/types'
+
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      'behold-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 'feed-id'?: string }
+    }
+  }
+}
 
 interface Props {
   album: AlbumRow
@@ -292,49 +301,11 @@ export default function PublicView({ album, tracks }: Props) {
         </section>
       )}
 
-      {(album.artist_instagram || album.my_instagram) && (
-        <section className="ts-instagram">
-          <div className="ts-section-label"><span>Suivre</span></div>
-          <div className="ig-section-inner">
-            <div className="ig-accounts">
-              {album.artist_instagram && (
-                <div className="ig-account">
-                  <div className="ig-account-label">Artiste</div>
-                  <a
-                    href={`https://instagram.com/${album.artist_instagram.replace('@', '')}`}
-                    className="ig-profile-link"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="ig-icon-wrap">📷</div>
-                    <div className="ig-profile-info">
-                      <div className="ig-profile-lbl">Instagram</div>
-                      <div className="ig-profile-handle">{album.artist_instagram}</div>
-                    </div>
-                  </a>
-                </div>
-              )}
-              {album.my_instagram && (
-                <div className="ig-account">
-                  <div className="ig-account-label">Management</div>
-                  <a
-                    href={`https://instagram.com/${album.my_instagram.replace('@', '')}`}
-                    className="ig-profile-link"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="ig-icon-wrap">📷</div>
-                    <div className="ig-profile-info">
-                      <div className="ig-profile-lbl">Instagram</div>
-                      <div className="ig-profile-handle">{album.my_instagram}</div>
-                    </div>
-                  </a>
-                </div>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
+      <section className="ts-instagram">
+        <div className="ts-section-label"><span>Instagram</span></div>
+        <behold-widget feed-id="1tcl1V4iTOeawn2PApns" />
+        <Script src="https://w.behold.so/widget.js" strategy="afterInteractive" type="module" />
+      </section>
 
       <audio ref={audioRef} preload="none" />
     </div>
