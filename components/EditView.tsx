@@ -3,7 +3,6 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { upload } from '@vercel/blob/client'
 import type { AlbumRow, TrackRow } from '@/lib/types'
 import TrackCard from './TrackCard'
 
@@ -31,11 +30,13 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
     if (!file) return
     setCoverUploading(true)
     try {
-      const blob = await upload(file.name, file, {
-        access: 'public',
-        handleUploadUrl: '/api/upload',
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'x-content-type': file.type, 'x-filename': file.name },
+        body: file,
       })
-      setAlbum(a => ({ ...a, cover_url: blob.url }))
+      const { url } = await res.json()
+      setAlbum(a => ({ ...a, cover_url: url }))
     } catch (err) {
       console.error('Upload failed', err)
     }
