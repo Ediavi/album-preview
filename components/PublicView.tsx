@@ -5,14 +5,6 @@ import { useRef, useState, useEffect, useCallback } from 'react'
 import Script from 'next/script'
 import type { AlbumRow, TrackRow } from '@/lib/types'
 
-declare global {
-  namespace JSX {
-    interface IntrinsicElements {
-      'behold-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & { 'feed-id'?: string }
-    }
-  }
-}
-
 interface Props {
   album: AlbumRow
   tracks: TrackRow[]
