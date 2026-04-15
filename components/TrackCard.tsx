@@ -9,6 +9,7 @@ interface Props {
   index: number
   onTitleChange: (id: number, title: string) => void
   onFileUploaded: (id: number, field: 'audio_url' | 'canvas_url' | 'cover_url', url: string) => void
+  onFileCleared: (id: number, field: 'audio_url' | 'canvas_url' | 'cover_url') => void
   onDelete: (id: number) => void
   onDragStart: (id: number) => void
   onDragOver: (id: number) => void
@@ -18,7 +19,7 @@ interface Props {
 }
 
 export default function TrackCard({
-  track, index, onTitleChange, onFileUploaded, onDelete,
+  track, index, onTitleChange, onFileUploaded, onFileCleared, onDelete,
   onDragStart, onDragOver, onDrop, isDragging, isDragOver,
 }: Props) {
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
@@ -45,6 +46,15 @@ export default function TrackCard({
     }
     setUploading(u => ({ ...u, [field]: false }))
     e.target.value = ''
+  }
+
+  const handleFileClear = async (field: 'audio_url' | 'canvas_url' | 'cover_url') => {
+    await fetch(`/api/tracks/${track.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: null }),
+    })
+    onFileCleared(track.id, field)
   }
 
   const className = [
@@ -83,6 +93,9 @@ export default function TrackCard({
         <span className={`fst${track.audio_url ? ' ok' : ''}`}>
           {uploading.audio_url ? 'Upload…' : (track.audio_url ? '✓ Fichier OK' : 'aucun')}
         </span>
+        {track.audio_url && !uploading.audio_url && (
+          <button className="tc-rm" title="Supprimer le fichier" onClick={() => handleFileClear('audio_url')}>×</button>
+        )}
 
         <label className="file-btn" style={{ marginLeft: 8 }}>
           🎬 Vidéo canvas
@@ -91,6 +104,9 @@ export default function TrackCard({
         <span className={`fst${track.canvas_url ? ' ok' : ''}`}>
           {uploading.canvas_url ? 'Upload…' : (track.canvas_url ? '✓ Fichier OK' : 'aucune')}
         </span>
+        {track.canvas_url && !uploading.canvas_url && (
+          <button className="tc-rm" title="Supprimer le fichier" onClick={() => handleFileClear('canvas_url')}>×</button>
+        )}
 
         <label className="file-btn" style={{ marginLeft: 8 }}>
           🖼 Cover (opt.)
@@ -99,6 +115,9 @@ export default function TrackCard({
         <span className={`fst${track.cover_url ? ' ok' : ''}`}>
           {uploading.cover_url ? 'Upload…' : (track.cover_url ? '✓ Fichier OK' : 'aucune')}
         </span>
+        {track.cover_url && !uploading.cover_url && (
+          <button className="tc-rm" title="Supprimer le fichier" onClick={() => handleFileClear('cover_url')}>×</button>
+        )}
       </div>
     </div>
   )

@@ -86,6 +86,10 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
     setTracks(t => t.map(track => track.id === id ? { ...track, [field]: url } : track))
   }
 
+  const handleFileCleared = (id: number, field: 'audio_url' | 'canvas_url' | 'cover_url') => {
+    setTracks(t => t.map(track => track.id === id ? { ...track, [field]: null } : track))
+  }
+
   const handleDrop = useCallback(async (targetId: number) => {
     if (!dragId || dragId === targetId) return
     const oldOrder = tracks.map(t => t.id)
@@ -150,6 +154,13 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
           <span className={`fst${album.cover_url ? ' ok' : ''}`}>
             {coverUploading ? 'Upload…' : (album.cover_url ? '✓ Image OK' : 'aucune image')}
           </span>
+          {album.cover_url && !coverUploading && (
+            <button
+              className="tc-rm"
+              title="Supprimer la couverture"
+              onClick={() => setAlbum(a => ({ ...a, cover_url: null }))}
+            >×</button>
+          )}
           {album.cover_url && (
             <img src={album.cover_url} alt="cover preview" className="artwork-preview" style={{ display: 'inline-block' }} />
           )}
@@ -168,6 +179,7 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
               index={i}
               onTitleChange={handleTitleChange}
               onFileUploaded={handleFileUploaded}
+              onFileCleared={handleFileCleared}
               onDelete={deleteTrack}
               onDragStart={id => setDragId(id)}
               onDragOver={id => setDragOverId(id)}
