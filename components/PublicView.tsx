@@ -2,6 +2,7 @@
 'use client'
 
 import { useRef, useState, useEffect, useCallback } from 'react'
+import Image from 'next/image'
 import Script from 'next/script'
 import type { AlbumRow, TrackRow } from '@/lib/types'
 
@@ -223,14 +224,29 @@ export default function PublicView({ album, tracks }: Props) {
     <div id="theshow" style={{ display: 'block' }}>
       {/* HERO */}
       <section className="ts-hero">
-        <div
-          className="ts-hero-bg"
-          style={coverSrc ? { backgroundImage: `url(${coverSrc})` } : undefined}
-        />
+        <div className="ts-hero-bg">
+          {/* Real <img> for the blur background — loads faster than CSS background-image */}
+          {coverSrc && (
+            <img
+              src={coverSrc}
+              alt=""
+              className="ts-hero-bg-img"
+              fetchPriority="high"
+            />
+          )}
+        </div>
         <div className="ts-hero-content">
           <div className="ts-artwork-wrap">
             {coverSrc ? (
-              <img className="ts-artwork" src={coverSrc} alt="artwork" />
+              <Image
+                className="ts-artwork"
+                src={coverSrc}
+                alt="artwork"
+                width={420}
+                height={420}
+                priority
+                quality={85}
+              />
             ) : (
               <div className="ts-artwork-placeholder">🎵</div>
             )}
@@ -291,10 +307,12 @@ export default function PublicView({ album, tracks }: Props) {
             />
             {!currentTrack?.canvas_url && (
               <div className="sp-cover-bg">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={currentTrack?.cover_url ?? coverSrc}
                   alt=""
                   className="sp-cover-img"
+                  fetchPriority="high"
                 />
               </div>
             )}
@@ -381,6 +399,7 @@ export default function PublicView({ album, tracks }: Props) {
               src={currentTrack?.cover_url ?? coverSrc}
               alt=""
               className="mob-cover-art"
+              fetchPriority="high"
             />
           )}
         </div>

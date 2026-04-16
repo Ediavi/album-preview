@@ -16,19 +16,30 @@ export default async function Home() {
     )
   }
 
-  // Collect all media URLs for eager preloading
-  const preloadUrls: { url: string; as: 'video' | 'audio' | 'image' }[] = []
+  // Collect media URLs — images first (highest priority), then audio, then video
+  const imageUrls: string[] = []
+  const audioUrls: string[] = []
+  const videoUrls: string[] = []
+  if (album.cover_url) imageUrls.push(album.cover_url)
   for (const t of tracks) {
-    if (t.canvas_url) preloadUrls.push({ url: t.canvas_url, as: 'video' })
-    if (t.audio_url) preloadUrls.push({ url: t.audio_url, as: 'audio' })
+    if (t.cover_url && !imageUrls.includes(t.cover_url)) imageUrls.push(t.cover_url)
+    if (t.audio_url) audioUrls.push(t.audio_url)
+    if (t.canvas_url) videoUrls.push(t.canvas_url)
   }
-  if (album.cover_url) preloadUrls.push({ url: album.cover_url, as: 'image' })
 
   return (
     <>
-      {/* Server-rendered preload hints — browser starts fetching before JS hydrates */}
-      {preloadUrls.map(({ url, as }) => (
-        <link key={url} rel="preload" href={url} as={as} crossOrigin="anonymous" />
+      {/* Cover images first — fetchpriority high so they render instantly */}
+      {imageUrls.map((url) => (
+        <link key={url} rel="preload" href={url} as="image" fetchPriority="high" crossOrigin="anonymous" />
+      ))}
+      {/* Audio next */}
+      {audioUrls.map((url) => (
+        <link key={url} rel="preload" href={url} as="fetch" crossOrigin="anonymous" />
+      ))}
+      {/* Videos last — largest files, lowest priority */}
+      {videoUrls.map((url) => (
+        <link key={url} rel="preload" href={url} as="video" crossOrigin="anonymous" />
       ))}
       <BlobCanvas />
       <div id="grain" />
