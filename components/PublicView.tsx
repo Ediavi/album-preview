@@ -39,9 +39,10 @@ export default function PublicView({ album, tracks }: Props) {
   const [scrollArrowVisible, setScrollArrowVisible] = useState(true)
 
   const audioRef = useRef<HTMLAudioElement>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const preloadAudioRef = useRef<HTMLAudioElement>(null)
-  const preloadVideoRef = useRef<HTMLVideoElement>(null)
+  const desktopVideoRef = useRef<HTMLVideoElement>(null)
+  const mobileVideoRef = useRef<HTMLVideoElement>(null)
+  // Cache of preloaded video blobs keyed by URL
+  const videoCache = useRef<Map<string, string>>(new Map())
 
   const currentTrack = tracks[currentIdx] ?? null
 
@@ -65,20 +66,54 @@ export default function PublicView({ album, tracks }: Props) {
     return () => clearInterval(t)
   }, [])
 
-  // Preload next track's audio and video for gapless transitions
-  const preloadNext = useCallback((idx: number) => {
-    const nextIdx = idx + 1
-    if (nextIdx >= tracks.length) return
-    const next = tracks[nextIdx]
-    if (next.audio_url && preloadAudioRef.current) {
-      preloadAudioRef.current.src = next.audio_url
-      preloadAudioRef.current.load()
+  // Helper: set video src on both desktop + mobile refs, play if needed
+  const setVideoOnBoth = useCallback((url: string | null, shouldPlay: boolean) => {
+    const vids = [desktopVideoRef.current, mobileVideoRef.current]
+    for (const v of vids) {
+      if (!v) continue
+      if (url) {
+        // Use cached blob URL if available
+        const cached = videoCache.current.get(url)
+        const src = cached ?? url
+        if (v.src !== src && v.getAttribute('src') !== src) {
+          v.src = src
+          v.load()
+        }
+        if (shouldPlay) v.play().catch(() => {})
+      } else {
+        v.pause()
+        v.removeAttribute('src')
+        v.load() // reset
+      }
     }
-    if (next.canvas_url && preloadVideoRef.current) {
-      preloadVideoRef.current.src = next.canvas_url
-      preloadVideoRef.current.load()
+  }, [])
+
+  // Preload a single video URL into a blob cache
+  const preloadVideo = useCallback((url: string) => {
+    if (!url || videoCache.current.has(url)) return
+    // Mark as in-progress to avoid duplicate fetches
+    videoCache.current.set(url, url)
+    fetch(url)
+      .then(r => r.blob())
+      .then(blob => {
+        const blobUrl = URL.createObjectURL(blob)
+        videoCache.current.set(url, blobUrl)
+      })
+      .catch(() => {}) // fall back to direct URL
+  }, [])
+
+  // On mount: preload ALL canvas videos + ALL audio eagerly
+  useEffect(() => {
+    for (const track of tracks) {
+      if (track.canvas_url) preloadVideo(track.canvas_url)
+      if (track.audio_url) {
+        // Preload audio into browser cache
+        const a = new Audio()
+        a.preload = 'auto'
+        a.src = track.audio_url
+      }
     }
-  }, [tracks])
+  }, [tracks, preloadVideo])
 
   const loadTrack = useCallback((idx: number, autoplay = false) => {
     if (idx < 0 || idx >= tracks.length) return
@@ -92,20 +127,8 @@ export default function PublicView({ album, tracks }: Props) {
     audio.src = track.audio_url ?? ''
     audio.load()
     if (autoplay) audio.play().catch(() => {})
-    const video = videoRef.current
-    if (video) {
-      if (track.canvas_url) {
-        video.src = track.canvas_url
-        video.load()
-        video.play().catch(() => {})
-      } else {
-        video.pause()
-        video.src = ''
-      }
-    }
-    // Start preloading the next track
-    preloadNext(idx)
-  }, [tracks, preloadNext])
+    setVideoOnBoth(track.canvas_url, true)
+  }, [tracks, setVideoOnBoth])
 
   useEffect(() => {
     if (tracks.length > 0) loadTrack(0, false)
@@ -142,8 +165,16 @@ export default function PublicView({ album, tracks }: Props) {
   useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
-    const onPlay = () => { setIsPlaying(true); videoRef.current?.play().catch(() => {}) }
-    const onPause = () => { setIsPlaying(false); videoRef.current?.pause() }
+    const onPlay = () => {
+      setIsPlaying(true)
+      desktopVideoRef.current?.play().catch(() => {})
+      mobileVideoRef.current?.play().catch(() => {})
+    }
+    const onPause = () => {
+      setIsPlaying(false)
+      desktopVideoRef.current?.pause()
+      mobileVideoRef.current?.pause()
+    }
     const onTimeUpdate = () => {
       if (!audio.duration) return
       setProgress((audio.currentTime / audio.duration) * 100)
@@ -249,11 +280,12 @@ export default function PublicView({ album, tracks }: Props) {
 
           <div className="phone-screen">
             <video
-              ref={videoRef}
+              ref={desktopVideoRef}
               className="canvas-video"
               loop
               muted
               playsInline
+              autoPlay
               preload="auto"
               style={{ display: currentTrack?.canvas_url ? 'block' : 'none' }}
             />
@@ -337,13 +369,14 @@ export default function PublicView({ album, tracks }: Props) {
       <section className="mob-player mobile-only">
         {/* Cover art */}
         <div className="mob-cover-wrap">
-          {currentTrack?.canvas_url ? (
-            <video
-              className="mob-cover-video"
-              loop muted playsInline preload="auto"
-              src={currentTrack?.canvas_url ?? ''}
-            />
-          ) : (
+          <video
+            ref={mobileVideoRef}
+            className="mob-cover-video"
+            loop muted playsInline autoPlay
+            preload="auto"
+            style={{ display: currentTrack?.canvas_url ? 'block' : 'none' }}
+          />
+          {!currentTrack?.canvas_url && (
             <img
               src={currentTrack?.cover_url ?? coverSrc}
               alt=""
@@ -439,9 +472,6 @@ export default function PublicView({ album, tracks }: Props) {
       </section>
 
       <audio ref={audioRef} preload="auto" />
-      {/* Hidden preload elements for next track */}
-      <audio ref={preloadAudioRef} preload="auto" style={{ display: 'none' }} />
-      <video ref={preloadVideoRef} preload="auto" muted style={{ display: 'none' }} />
     </div>
   )
 }
