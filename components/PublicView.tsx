@@ -40,12 +40,42 @@ export default function PublicView({ album, tracks }: Props) {
   const [scrollArrowVisible, setScrollArrowVisible] = useState(true)
 
   const audioRef = useRef<HTMLAudioElement>(null)
-  const desktopVideoRef = useRef<HTMLVideoElement>(null)
-  const mobileVideoRef = useRef<HTMLVideoElement>(null)
-  // Cache of preloaded video blobs keyed by URL
-  const videoCache = useRef<Map<string, string>>(new Map())
+  // Video pool: one <video> per track per layout (desktop + mobile)
+  const desktopVideos = useRef<Map<number, HTMLVideoElement>>(new Map())
+  const mobileVideos = useRef<Map<number, HTMLVideoElement>>(new Map())
 
   const currentTrack = tracks[currentIdx] ?? null
+
+  // Callback ref factories for the video pools
+  const setDesktopVideo = useCallback((idx: number) => (el: HTMLVideoElement | null) => {
+    if (el) desktopVideos.current.set(idx, el)
+    else desktopVideos.current.delete(idx)
+  }, [])
+
+  const setMobileVideo = useCallback((idx: number) => (el: HTMLVideoElement | null) => {
+    if (el) mobileVideos.current.set(idx, el)
+    else mobileVideos.current.delete(idx)
+  }, [])
+
+  // Get all video elements for a given track index
+  const getVideosForTrack = useCallback((idx: number): HTMLVideoElement[] => {
+    const vids: HTMLVideoElement[] = []
+    const d = desktopVideos.current.get(idx)
+    if (d) vids.push(d)
+    const m = mobileVideos.current.get(idx)
+    if (m) vids.push(m)
+    return vids
+  }, [])
+
+  // Pause all videos except the given index
+  const pauseAllExcept = useCallback((activeIdx: number) => {
+    for (const [idx, v] of desktopVideos.current) {
+      if (idx !== activeIdx) v.pause()
+    }
+    for (const [idx, v] of mobileVideos.current) {
+      if (idx !== activeIdx) v.pause()
+    }
+  }, [])
 
   // Fade scroll arrow on scroll
   useEffect(() => {
@@ -67,54 +97,16 @@ export default function PublicView({ album, tracks }: Props) {
     return () => clearInterval(t)
   }, [])
 
-  // Helper: set video src on both desktop + mobile refs, play if needed
-  const setVideoOnBoth = useCallback((url: string | null, shouldPlay: boolean) => {
-    const vids = [desktopVideoRef.current, mobileVideoRef.current]
-    for (const v of vids) {
-      if (!v) continue
-      if (url) {
-        // Use cached blob URL if available
-        const cached = videoCache.current.get(url)
-        const src = cached ?? url
-        if (v.src !== src && v.getAttribute('src') !== src) {
-          v.src = src
-          v.load()
-        }
-        if (shouldPlay) v.play().catch(() => {})
-      } else {
-        v.pause()
-        v.removeAttribute('src')
-        v.load() // reset
-      }
-    }
-  }, [])
-
-  // Preload a single video URL into a blob cache
-  const preloadVideo = useCallback((url: string) => {
-    if (!url || videoCache.current.has(url)) return
-    // Mark as in-progress to avoid duplicate fetches
-    videoCache.current.set(url, url)
-    fetch(url)
-      .then(r => r.blob())
-      .then(blob => {
-        const blobUrl = URL.createObjectURL(blob)
-        videoCache.current.set(url, blobUrl)
-      })
-      .catch(() => {}) // fall back to direct URL
-  }, [])
-
-  // On mount: preload ALL canvas videos + ALL audio eagerly
+  // Preload all audio on mount (hidden Audio objects)
   useEffect(() => {
     for (const track of tracks) {
-      if (track.canvas_url) preloadVideo(track.canvas_url)
       if (track.audio_url) {
-        // Preload audio into browser cache
         const a = new Audio()
         a.preload = 'auto'
         a.src = track.audio_url
       }
     }
-  }, [tracks, preloadVideo])
+  }, [tracks])
 
   const loadTrack = useCallback((idx: number, autoplay = false) => {
     if (idx < 0 || idx >= tracks.length) return
@@ -128,8 +120,14 @@ export default function PublicView({ album, tracks }: Props) {
     audio.src = track.audio_url ?? ''
     audio.load()
     if (autoplay) audio.play().catch(() => {})
-    setVideoOnBoth(track.canvas_url, true)
-  }, [tracks, setVideoOnBoth])
+    // Pause all other videos, play the active one
+    pauseAllExcept(idx)
+    if (track.canvas_url) {
+      for (const v of getVideosForTrack(idx)) {
+        v.play().catch(() => {})
+      }
+    }
+  }, [tracks, pauseAllExcept, getVideosForTrack])
 
   useEffect(() => {
     if (tracks.length > 0) loadTrack(0, false)
@@ -168,13 +166,15 @@ export default function PublicView({ album, tracks }: Props) {
     if (!audio) return
     const onPlay = () => {
       setIsPlaying(true)
-      desktopVideoRef.current?.play().catch(() => {})
-      mobileVideoRef.current?.play().catch(() => {})
+      for (const v of getVideosForTrack(currentIdx)) {
+        v.play().catch(() => {})
+      }
     }
     const onPause = () => {
       setIsPlaying(false)
-      desktopVideoRef.current?.pause()
-      mobileVideoRef.current?.pause()
+      for (const v of getVideosForTrack(currentIdx)) {
+        v.pause()
+      }
     }
     const onTimeUpdate = () => {
       if (!audio.duration) return
@@ -198,7 +198,7 @@ export default function PublicView({ album, tracks }: Props) {
       audio.removeEventListener('loadedmetadata', onLoadedMetadata)
       audio.removeEventListener('ended', onEnded)
     }
-  }, [currentIdx, tracks, loadTrack])
+  }, [currentIdx, tracks, loadTrack, getVideosForTrack])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -220,12 +220,14 @@ export default function PublicView({ album, tracks }: Props) {
   const ytId = getYtId(album.youtube_url)
   const coverSrc = album.cover_url ?? ''
 
+  // Does ANY track have a canvas? (for deciding cover fallback)
+  const hasCanvasVideo = currentTrack?.canvas_url
+
   return (
     <div id="theshow" style={{ display: 'block' }}>
       {/* HERO */}
       <section className="ts-hero">
         <div className="ts-hero-bg">
-          {/* Real <img> for the blur background — loads faster than CSS background-image */}
           {coverSrc && (
             <img
               src={coverSrc}
@@ -295,17 +297,25 @@ export default function PublicView({ album, tracks }: Props) {
           </div>
 
           <div className="phone-screen">
-            <video
-              ref={desktopVideoRef}
-              className="canvas-video"
-              loop
-              muted
-              playsInline
-              autoPlay
-              preload="auto"
-              style={{ display: currentTrack?.canvas_url ? 'block' : 'none' }}
-            />
-            {!currentTrack?.canvas_url && (
+            {/* VIDEO POOL: one <video> per track, all preloading simultaneously */}
+            {tracks.map((track, i) =>
+              track.canvas_url ? (
+                <video
+                  key={track.id}
+                  ref={setDesktopVideo(i)}
+                  className="canvas-video"
+                  src={track.canvas_url}
+                  loop
+                  muted
+                  playsInline
+                  autoPlay={i === 0}
+                  preload="auto"
+                  style={{ display: i === currentIdx ? 'block' : 'none' }}
+                />
+              ) : null
+            )}
+            {/* Cover fallback when active track has no canvas */}
+            {!hasCanvasVideo && (
               <div className="sp-cover-bg">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -320,14 +330,14 @@ export default function PublicView({ album, tracks }: Props) {
             <div className="dynamic-island" />
             <div className="status-bar">
               <span className="clk">{phoneTime}</span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>▪▪▪ WiFi 🔋</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>&#x25AA;&#x25AA;&#x25AA; WiFi &#x1F50B;</span>
             </div>
             <div className="sp-top">
-              <span style={{ fontSize: 28, opacity: 0.9 }}>‹</span>
+              <span style={{ fontSize: 28, opacity: 0.9 }}>&lsaquo;</span>
               <div className="sp-ep-lbl">
                 Lecture depuis l&apos;EP<b>{album.ep_name || '—'}</b>
               </div>
-              <span className="sp-menu">⋮</span>
+              <span className="sp-menu">&vellip;</span>
             </div>
             <div className="sp-bottom">
               <div className="sp-like-row">
@@ -335,7 +345,7 @@ export default function PublicView({ album, tracks }: Props) {
                   <div className="sp-title">{currentTrack?.title || '—'}</div>
                   <div className="sp-artist-name">{album.artist || '—'}</div>
                 </div>
-                <span className="sp-heart">♡</span>
+                <span className="sp-heart">&hearts;</span>
               </div>
               <div className="sp-bar" onClick={handleSeek}>
                 <div className="sp-fill" style={{ width: `${progress}%` }} />
@@ -345,11 +355,11 @@ export default function PublicView({ album, tracks }: Props) {
                 <span>{duration}</span>
               </div>
               <div className="sp-ctrls">
-                <button onClick={() => loadTrack(Math.max(0, currentIdx - 1), isPlaying)}>⏮</button>
+                <button onClick={() => loadTrack(Math.max(0, currentIdx - 1), isPlaying)}>&#x23EE;</button>
                 <button className="sp-play-btn" id="sp_play" onClick={togglePlay}>
-                  {isPlaying ? '⏸' : '▶'}
+                  {isPlaying ? '\u23F8' : '\u25B6'}
                 </button>
-                <button onClick={() => loadTrack(Math.min(tracks.length - 1, currentIdx + 1), isPlaying)}>⏭</button>
+                <button onClick={() => loadTrack(Math.min(tracks.length - 1, currentIdx + 1), isPlaying)}>&#x23ED;</button>
               </div>
               <div className="sp-volume">
                 <button className="sp-vol-icon" onClick={toggleMute}>
@@ -385,16 +395,23 @@ export default function PublicView({ album, tracks }: Props) {
 
       {/* TRACKS — Mobile player */}
       <section className="mob-player mobile-only">
-        {/* Cover art */}
+        {/* Cover art: video pool + fallback image */}
         <div className="mob-cover-wrap">
-          <video
-            ref={mobileVideoRef}
-            className="mob-cover-video"
-            loop muted playsInline autoPlay
-            preload="auto"
-            style={{ display: currentTrack?.canvas_url ? 'block' : 'none' }}
-          />
-          {!currentTrack?.canvas_url && (
+          {tracks.map((track, i) =>
+            track.canvas_url ? (
+              <video
+                key={track.id}
+                ref={setMobileVideo(i)}
+                className="mob-cover-video"
+                src={track.canvas_url}
+                loop muted playsInline
+                autoPlay={i === 0}
+                preload="auto"
+                style={{ display: i === currentIdx ? 'block' : 'none' }}
+              />
+            ) : null
+          )}
+          {!hasCanvasVideo && (
             <img
               src={currentTrack?.cover_url ?? coverSrc}
               alt=""
@@ -458,7 +475,7 @@ export default function PublicView({ album, tracks }: Props) {
 
       {album.youtube_url && (
         <section className="ts-youtube">
-          <div className="ts-section-label"><span>Vidéo</span></div>
+          <div className="ts-section-label"><span>Video</span></div>
           <div className="yt-outer">
             <a
               href={album.youtube_url}
