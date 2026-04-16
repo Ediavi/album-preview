@@ -7,6 +7,7 @@ export interface AlbumRow {
   description: string
   cover_url: string | null
   youtube_url: string | null
+  youtube_thumbnail_url: string | null
   artist_instagram: string | null
   artist_post_url: string | null
   my_instagram: string | null
@@ -30,6 +31,7 @@ export interface UpdateAlbumPayload {
   description?: string
   cover_url?: string | null
   youtube_url?: string | null
+  youtube_thumbnail_url?: string | null
   artist_instagram?: string | null
   artist_post_url?: string | null
   my_instagram?: string | null

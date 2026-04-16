@@ -36,11 +36,23 @@ export default function PublicView({ album, tracks }: Props) {
   const [volume, setVolume] = useState(80)
   const [isMuted, setIsMuted] = useState(false)
   const [phoneTime, setPhoneTime] = useState('9:41')
+  const [scrollArrowVisible, setScrollArrowVisible] = useState(true)
 
   const audioRef = useRef<HTMLAudioElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const preloadAudioRef = useRef<HTMLAudioElement>(null)
+  const preloadVideoRef = useRef<HTMLVideoElement>(null)
 
   const currentTrack = tracks[currentIdx] ?? null
+
+  // Fade scroll arrow on scroll
+  useEffect(() => {
+    const onScroll = () => {
+      if (window.scrollY > 80) setScrollArrowVisible(false)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // Update phone clock
   useEffect(() => {
@@ -52,6 +64,21 @@ export default function PublicView({ album, tracks }: Props) {
     const t = setInterval(tick, 60000)
     return () => clearInterval(t)
   }, [])
+
+  // Preload next track's audio and video for gapless transitions
+  const preloadNext = useCallback((idx: number) => {
+    const nextIdx = idx + 1
+    if (nextIdx >= tracks.length) return
+    const next = tracks[nextIdx]
+    if (next.audio_url && preloadAudioRef.current) {
+      preloadAudioRef.current.src = next.audio_url
+      preloadAudioRef.current.load()
+    }
+    if (next.canvas_url && preloadVideoRef.current) {
+      preloadVideoRef.current.src = next.canvas_url
+      preloadVideoRef.current.load()
+    }
+  }, [tracks])
 
   const loadTrack = useCallback((idx: number, autoplay = false) => {
     if (idx < 0 || idx >= tracks.length) return
@@ -66,16 +93,19 @@ export default function PublicView({ album, tracks }: Props) {
     audio.load()
     if (autoplay) audio.play().catch(() => {})
     const video = videoRef.current
-    if (!video) return
-    if (track.canvas_url) {
-      video.src = track.canvas_url
-      video.load()
-      video.play().catch(() => {})
-    } else {
-      video.pause()
-      video.src = ''
+    if (video) {
+      if (track.canvas_url) {
+        video.src = track.canvas_url
+        video.load()
+        video.play().catch(() => {})
+      } else {
+        video.pause()
+        video.src = ''
+      }
     }
-  }, [tracks])
+    // Start preloading the next track
+    preloadNext(idx)
+  }, [tracks, preloadNext])
 
   useEffect(() => {
     if (tracks.length > 0) loadTrack(0, false)
@@ -182,10 +212,15 @@ export default function PublicView({ album, tracks }: Props) {
             )}
           </div>
         </div>
+        <div className={`scroll-arrow${scrollArrowVisible ? '' : ' hidden'}`}>
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 10l5 5 5-5" />
+          </svg>
+        </div>
       </section>
 
-      {/* TRACKS */}
-      <section className="ts-tracks">
+      {/* TRACKS — Desktop */}
+      <section className="ts-tracks desktop-only">
         <div className="ts-section-label"><span>Morceaux</span></div>
         <div className="show-wrap">
           <div className="tracklist-panel glass">
@@ -219,8 +254,18 @@ export default function PublicView({ album, tracks }: Props) {
               loop
               muted
               playsInline
-              preload="none"
+              preload="auto"
+              style={{ display: currentTrack?.canvas_url ? 'block' : 'none' }}
             />
+            {!currentTrack?.canvas_url && (
+              <div className="sp-cover-bg">
+                <img
+                  src={currentTrack?.cover_url ?? coverSrc}
+                  alt=""
+                  className="sp-cover-img"
+                />
+              </div>
+            )}
             <div className="screen-overlay" />
             <div className="dynamic-island" />
             <div className="status-bar">
@@ -256,39 +301,133 @@ export default function PublicView({ album, tracks }: Props) {
                 </button>
                 <button onClick={() => loadTrack(Math.min(tracks.length - 1, currentIdx + 1), isPlaying)}>⏭</button>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, gap: 8, alignItems: 'center' }}>
-                <button
-                  onClick={toggleMute}
-                  style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: 16, opacity: 0.7 }}
-                >
-                  {isMuted ? '🔇' : '🔊'}
+              <div className="sp-volume">
+                <button className="sp-vol-icon" onClick={toggleMute}>
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                    {isMuted || volume === 0 ? (
+                      <path d="M13.86 5.47a.75.75 0 00-1.06 0l-1.47 1.47-1.47-1.47a.75.75 0 00-1.06 1.06L10.27 8l-1.47 1.47a.75.75 0 101.06 1.06l1.47-1.47 1.47 1.47a.75.75 0 001.06-1.06L12.4 8l1.47-1.47a.75.75 0 000-1.06zM10.82 0H1.73C.77 0 0 .77 0 1.73V14.27C0 15.23.77 16 1.73 16h2.7V0h6.39z" transform="scale(0.7) translate(2,2.5)"/>
+                    ) : volume < 50 ? (
+                      <path d="M0 5v6h2.8L7 14V2L2.8 5H0zm9-.5v1c1.1.5 2 1.8 2 3.5s-.9 3-2 3.5v1c1.7-.5 3-2.2 3-4.5s-1.3-4-3-4.5z" transform="scale(0.85) translate(1.5,1)"/>
+                    ) : (
+                      <path d="M0 5v6h2.8L7 14V2L2.8 5H0zm11-.5v1c1.7.8 3 2.8 3 5.5s-1.3 4.7-3 5.5v1c2.3-.8 4-3.2 4-6.5s-1.7-5.7-4-6.5zM9 4.5v1c1.1.5 2 1.8 2 3.5s-.9 3-2 3.5v1c1.7-.5 3-2.2 3-4.5s-1.3-4-3-4.5z" transform="scale(0.75) translate(1.5,1.5)"/>
+                    )}
+                  </svg>
                 </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={volume}
-                  onChange={handleVolumeChange}
-                  style={{ width: 80 }}
-                />
+                <div
+                  className="sp-vol-track"
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect()
+                    const pct = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width))
+                    const v = Math.round(pct * 100)
+                    setVolume(v)
+                    if (audioRef.current) { audioRef.current.volume = v / 100; audioRef.current.muted = false }
+                    setIsMuted(false)
+                  }}
+                >
+                  <div className="sp-vol-fill" style={{ width: `${isMuted ? 0 : volume}%` }} />
+                  <div className="sp-vol-knob" style={{ left: `${isMuted ? 0 : volume}%` }} />
+                </div>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {ytId && (
+      {/* TRACKS — Mobile player */}
+      <section className="mob-player mobile-only">
+        {/* Cover art */}
+        <div className="mob-cover-wrap">
+          {currentTrack?.canvas_url ? (
+            <video
+              className="mob-cover-video"
+              loop muted playsInline preload="auto"
+              src={currentTrack?.canvas_url ?? ''}
+            />
+          ) : (
+            <img
+              src={currentTrack?.cover_url ?? coverSrc}
+              alt=""
+              className="mob-cover-art"
+            />
+          )}
+        </div>
+
+        {/* Song info */}
+        <div className="mob-info">
+          <div className="mob-title">{currentTrack?.title || '—'}</div>
+          <div className="mob-artist">{album.artist || '—'}</div>
+        </div>
+
+        {/* Progress */}
+        <div className="mob-progress" onClick={handleSeek}>
+          <div className="mob-progress-fill" style={{ width: `${progress}%` }} />
+        </div>
+        <div className="mob-times">
+          <span>{currentTime}</span>
+          <span>{duration}</span>
+        </div>
+
+        {/* Controls */}
+        <div className="mob-controls">
+          <button className="mob-ctrl" onClick={() => loadTrack(Math.max(0, currentIdx - 1), isPlaying)}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+          </button>
+          <button className="mob-play" onClick={togglePlay}>
+            {isPlaying ? (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>
+            ) : (
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            )}
+          </button>
+          <button className="mob-ctrl" onClick={() => loadTrack(Math.min(tracks.length - 1, currentIdx + 1), isPlaying)}>
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+          </button>
+        </div>
+
+        {/* Track list */}
+        <div className="mob-tracklist">
+          {tracks.map((track, i) => (
+            <div
+              key={track.id}
+              className={`mob-track${i === currentIdx ? ' active' : ''}`}
+              onClick={() => loadTrack(i, isPlaying)}
+            >
+              <span className="mob-track-num">{i + 1}</span>
+              {i === currentIdx && (
+                <span className="mob-wave">
+                  <span /><span /><span />
+                </span>
+              )}
+              <span className="mob-track-title">{track.title}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {album.youtube_url && (
         <section className="ts-youtube">
           <div className="ts-section-label"><span>Vidéo</span></div>
           <div className="yt-outer">
-            <div className="yt-frame">
-              <iframe
-                src={`https://www.youtube-nocookie.com/embed/${ytId}?rel=0&modestbranding=1&color=white`}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-                referrerPolicy="strict-origin-when-cross-origin"
-              />
-            </div>
+            <a
+              href={album.youtube_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="yt-thumbnail-link"
+            >
+              <div className="yt-frame">
+                <img
+                  src={album.youtube_thumbnail_url ?? (ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : '')}
+                  alt="YouTube video thumbnail"
+                  className="yt-thumbnail-img"
+                />
+                <div className="yt-play-overlay">
+                  <svg width="68" height="48" viewBox="0 0 68 48">
+                    <path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/>
+                    <path d="M45 24L27 14v20" fill="white"/>
+                  </svg>
+                </div>
+              </div>
+            </a>
           </div>
         </section>
       )}
@@ -299,7 +438,10 @@ export default function PublicView({ album, tracks }: Props) {
         <Script src="https://w.behold.so/widget.js" strategy="afterInteractive" type="module" />
       </section>
 
-      <audio ref={audioRef} preload="none" />
+      <audio ref={audioRef} preload="auto" />
+      {/* Hidden preload elements for next track */}
+      <audio ref={preloadAudioRef} preload="auto" style={{ display: 'none' }} />
+      <video ref={preloadVideoRef} preload="auto" muted style={{ display: 'none' }} />
     </div>
   )
 }

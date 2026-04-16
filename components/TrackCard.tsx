@@ -2,6 +2,7 @@
 'use client'
 
 import { useState } from 'react'
+import { upload } from '@vercel/blob/client'
 import type { TrackRow } from '@/lib/types'
 
 interface Props {
@@ -23,6 +24,9 @@ export default function TrackCard({
   onDragStart, onDragOver, onDrop, isDragging, isDragOver,
 }: Props) {
   const [uploading, setUploading] = useState<Record<string, boolean>>({})
+  const [error, setError] = useState<string | null>(null)
+
+  const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 
   const handleFileChange = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -30,21 +34,27 @@ export default function TrackCard({
   ) => {
     const file = e.target.files?.[0]
     if (!file) return
+    setError(null)
+    if (file.size > MAX_SIZE) {
+      const sizeMB = (file.size / (1024 * 1024)).toFixed(1)
+      setError(`Fichier trop lourd (${sizeMB} MB). Max 10 MB — utilise MP3 au lieu de WAV, ou compresse la vidéo.`)
+      e.target.value = ''
+      return
+    }
     setUploading(u => ({ ...u, [field]: true }))
 
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'x-content-type': file.type, 'x-filename': file.name },
-        body: file,
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        clientPayload: file.type,
       })
-      const { url } = await res.json()
       await fetch(`/api/tracks/${track.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [field]: url }),
+        body: JSON.stringify({ [field]: blob.url }),
       })
-      onFileUploaded(track.id, field, url)
+      onFileUploaded(track.id, field, blob.url)
     } catch (err) {
       console.error('Upload failed', err)
     }
@@ -89,10 +99,11 @@ export default function TrackCard({
         <button className="tc-rm" onClick={() => onDelete(track.id)}>×</button>
       </div>
 
+      {error && <div style={{ color: '#ff6b6b', fontSize: 11, marginBottom: 6, padding: '6px 10px', background: 'rgba(255,80,80,.08)', borderRadius: 8 }}>{error}</div>}
       <div className="tc-files">
         <label className="file-btn">
           🎵 Audio
-          <input type="file" accept="audio/*" hidden onChange={e => handleFileChange(e, 'audio_url')} />
+          <input type="file" accept="audio/*,.wav" hidden onChange={e => handleFileChange(e, 'audio_url')} />
         </label>
         <span className={`fst${track.audio_url ? ' ok' : ''}`}>
           {uploading.audio_url ? 'Upload…' : (track.audio_url ? '✓ Fichier OK' : 'aucun')}

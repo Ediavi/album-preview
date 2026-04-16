@@ -3,6 +3,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { upload } from '@vercel/blob/client'
 import type { AlbumRow, TrackRow } from '@/lib/types'
 import TrackCard from './TrackCard'
 
@@ -17,6 +18,7 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
+  const [ytThumbUploading, setYtThumbUploading] = useState(false)
   const [dragId, setDragId] = useState<number | null>(null)
   const [dragOverId, setDragOverId] = useState<number | null>(null)
   const router = useRouter()
@@ -30,13 +32,12 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
     if (!file) return
     setCoverUploading(true)
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        headers: { 'x-content-type': file.type, 'x-filename': file.name },
-        body: file,
+      const blob = await upload(file.name, file, {
+        access: 'public',
+        handleUploadUrl: '/api/upload',
+        clientPayload: file.type,
       })
-      const { url } = await res.json()
-      setAlbum(a => ({ ...a, cover_url: url }))
+      setAlbum(a => ({ ...a, cover_url: blob.url }))
     } catch (err) {
       console.error('Upload failed', err)
     }
@@ -205,6 +206,38 @@ export default function EditView({ initialAlbum, initialTracks }: Props) {
         <div className="field">
           <label>LIEN YOUTUBE</label>
           <input type="text" value={album.youtube_url ?? ''} onChange={e => updateAlbumField('youtube_url', e.target.value)} placeholder="https://youtube.com/watch?v=..." />
+        </div>
+        <div className="field">
+          <label>MINIATURE YOUTUBE (optionnel — sinon auto depuis YouTube)</label>
+          <label className="file-btn">
+            🖼 Choisir une miniature
+            <input type="file" accept="image/*" hidden onChange={async (e) => {
+              const file = e.target.files?.[0]
+              if (!file) return
+              setYtThumbUploading(true)
+              try {
+                const blob = await upload(file.name, file, {
+                  access: 'public',
+                  handleUploadUrl: '/api/upload',
+                  clientPayload: file.type,
+                })
+                setAlbum(a => ({ ...a, youtube_thumbnail_url: blob.url }))
+              } catch (err) {
+                console.error('Upload failed', err)
+              }
+              setYtThumbUploading(false)
+              e.target.value = ''
+            }} />
+          </label>
+          <span className={`fst${album.youtube_thumbnail_url ? ' ok' : ''}`}>
+            {ytThumbUploading ? 'Upload…' : (album.youtube_thumbnail_url ? '✓ Image OK' : 'aucune')}
+          </span>
+          {album.youtube_thumbnail_url && !ytThumbUploading && (
+            <button className="tc-rm" title="Supprimer" onClick={() => setAlbum(a => ({ ...a, youtube_thumbnail_url: null }))}>×</button>
+          )}
+          {album.youtube_thumbnail_url && (
+            <img src={album.youtube_thumbnail_url} alt="yt thumbnail preview" className="artwork-preview" style={{ display: 'inline-block' }} />
+          )}
         </div>
         <div className="ig-setup-group">
           <div className="ig-setup-group-title">📷 Instagram — Artiste</div>

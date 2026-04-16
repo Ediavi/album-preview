@@ -15,6 +15,7 @@ export async function updateAlbum(payload: UpdateAlbumPayload): Promise<AlbumRow
       description      = COALESCE(${payload.description     ?? null}, description),
       cover_url        = COALESCE(${payload.cover_url       ?? null}, cover_url),
       youtube_url      = COALESCE(${payload.youtube_url     ?? null}, youtube_url),
+      youtube_thumbnail_url = COALESCE(${payload.youtube_thumbnail_url ?? null}, youtube_thumbnail_url),
       artist_instagram = COALESCE(${payload.artist_instagram ?? null}, artist_instagram),
       artist_post_url  = COALESCE(${payload.artist_post_url  ?? null}, artist_post_url),
       my_instagram     = COALESCE(${payload.my_instagram    ?? null}, my_instagram),
